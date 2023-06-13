@@ -188,6 +188,7 @@ class SparkCompare:
         self._rows_only_compare = None
         self._all_matched_rows = None
         self._all_rows_mismatched = None
+        self._example_problem_rows = None
         self.columns_match_dict = {}
 
         # drop the duplicates before actual comparison made.
@@ -406,6 +407,24 @@ class SparkCompare:
                 self._rows_only_compare.cache().count()
 
         return self._rows_only_compare
+    
+    @property
+    def example_problem_rows(self):
+        """pyspark.sql.DataFrame: Returns example problem rows showing a single row per unique difference"""
+        if not self._example_problem_rows:
+            columns_with_any_diffs = {
+                key: self.columns_match_dict[key]
+                for key in self.columns_match_dict
+                if self.columns_match_dict[key][MatchType.MISMATCH.value]
+            }
+            cols = []
+            aggs = []
+            for col in columns_with_any_diffs:
+                cols.extend([f"{col}_base", f"{col}_compare"])
+            for col in self._join_column_names:
+                aggs.extend([F.first(col).alias(col)])
+            self._example_problem_rows = self._all_rows_mismatched.groupBy(*cols).agg(*aggs).select(*self._join_column_names, *cols).distinct()
+        return self._example_problem_rows
 
     def _generate_select_statement(self, match_data=True):
         """This function is to generate the select statement to be used later in the query."""
@@ -713,13 +732,13 @@ class SparkCompare:
         columns_fully_matching = {
             key: self.columns_match_dict[key]
             for key in self.columns_match_dict
-            if sum(self.columns_match_dict[key])
+            if self.columns_match_dict[key]
             == self.columns_match_dict[key][MatchType.MATCH.value]
         }
         columns_with_any_diffs = {
             key: self.columns_match_dict[key]
             for key in self.columns_match_dict
-            if sum(self.columns_match_dict[key])
+            if self.columns_match_dict[key]
             != self.columns_match_dict[key][MatchType.MATCH.value]
         }
         base_types = {x[0]: x[1] for x in self.base_df.dtypes}
