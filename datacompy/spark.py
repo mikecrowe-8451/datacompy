@@ -374,7 +374,10 @@ class SparkCompare:
             base_rows.createOrReplaceTempView("baseRows")
             self.base_df.createOrReplaceTempView("baseTable")
             join_condition = " AND ".join(
-                ["A." + name + "<=>B." + name for name in self._join_column_names]
+                [
+                    "A." + f"`{name}`" + "<=>B." + f"`{name}`"
+                    for name in self._join_column_names
+                ]
             )
             sql_query = "select A.* from baseTable as A, baseRows as B where {}".format(
                 join_condition
@@ -394,7 +397,10 @@ class SparkCompare:
             compare_rows.createOrReplaceTempView("compareRows")
             self.compare_df.createOrReplaceTempView("compareTable")
             where_condition = " AND ".join(
-                ["A." + name + "<=>B." + name for name in self._join_column_names]
+                [
+                    "A." + f"`{name}`" + "<=>B." + f"`{name}`"
+                    for name in self._join_column_names
+                ]
             )
             sql_query = (
                 "select A.* from compareTable as A, compareRows as B where {}".format(
@@ -407,7 +413,7 @@ class SparkCompare:
                 self._rows_only_compare.cache().count()
 
         return self._rows_only_compare
-    
+
     @property
     def example_problem_rows(self):
         """pyspark.sql.DataFrame: Returns example problem rows showing a single row per unique difference"""
@@ -423,7 +429,12 @@ class SparkCompare:
                 cols.extend([f"{col}_base", f"{col}_compare"])
             for col in self._join_column_names:
                 aggs.extend([F.first(col).alias(col)])
-            self._example_problem_rows = self._all_rows_mismatched.groupBy(*cols).agg(*aggs).select(*self._join_column_names, *cols).distinct()
+            self._example_problem_rows = (
+                self._all_rows_mismatched.groupBy(*cols)
+                .agg(*aggs)
+                .select(*self._join_column_names, *cols)
+                .distinct()
+            )
         return self._example_problem_rows
 
     def _generate_select_statement(self, match_data=True):
@@ -475,7 +486,7 @@ class SparkCompare:
         self._all_matched_rows.createOrReplaceTempView("matched_table")
 
         where_cond = " OR ".join(
-            ["A." + name + "_match= False" for name in self.columns_compared]
+            ["A.`" + name + "_match`= False" for name in self.columns_compared]
         )
         mismatch_query = """SELECT * FROM matched_table A WHERE {}""".format(where_cond)
         self._all_rows_mismatched = self.spark.sql(mismatch_query).orderBy(
@@ -485,7 +496,10 @@ class SparkCompare:
     def _get_or_create_joined_dataframe(self):
         if self._joined_dataframe is None:
             join_condition = " AND ".join(
-                ["A." + name + "<=>B." + name for name in self._join_column_names]
+                [
+                    "A." + f"`{name}`" + "<=>B." + f"`{name}`"
+                    for name in self._join_column_names
+                ]
             )
             select_statement = self._generate_select_statement(match_data=True)
 
@@ -516,7 +530,7 @@ class SparkCompare:
 
         where_cond = " AND ".join(
             [
-                "A." + name + "=" + str(MatchType.MATCH.value)
+                "A." + f"`{name}`" + "=" + str(MatchType.MATCH.value)
                 for name in self.columns_compared
             ]
         )
@@ -573,22 +587,22 @@ class SparkCompare:
             match_type_comparison = ""
             for k in MatchType:
                 match_type_comparison += (
-                    " WHEN (A.{name}={match_value}) THEN '{match_name}'".format(
+                    " WHEN (A.`{name}`={match_value}) THEN '{match_name}'".format(
                         name=name, match_value=str(k.value), match_name=k.name
                     )
                 )
-            return "A.{name}_base, A.{name}_compare, (CASE WHEN (A.{name}={match_failure}) THEN False ELSE True END) AS {name}_match, (CASE {match_type_comparison} ELSE 'UNDEFINED' END) AS {name}_match_type ".format(
+            return "A.`{name}_base`, `A.{name}_compare`, (CASE WHEN (A.`{name}`={match_failure}) THEN False ELSE True END) AS `{name}_match`, (CASE {match_type_comparison} ELSE 'UNDEFINED' END) AS `{name}_match_type` ".format(
                 name=name,
                 match_failure=MatchType.MISMATCH.value,
                 match_type_comparison=match_type_comparison,
             )
         else:
-            return "A.{name}_base, A.{name}_compare, CASE WHEN (A.{name}={match_failure})  THEN False ELSE True END AS {name}_match ".format(
+            return "A.`{name}_base`, A.`{name}_compare`, CASE WHEN (A.`{name}`={match_failure})  THEN False ELSE True END AS `{name}_match` ".format(
                 name=name, match_failure=MatchType.MISMATCH.value
             )
 
     def _create_case_statement(self, name):
-        equal_comparisons = ["(A.{name} IS NULL AND B.{name} IS NULL)"]
+        equal_comparisons = ["(A.`{name}` IS NULL AND B.`{name}` IS NULL)"]
         known_diff_comparisons = ["(FALSE)"]
 
         base_dtype = [d[1] for d in self.base_df.dtypes if d[0] == name][0]
